@@ -563,6 +563,7 @@ cors <- svycor(~ disc.trans +
          as.numeric(affirm.id.gender)+
          as.numeric(affirm.hormone)+ 
          as.numeric(affirm.med.surg), design = USTS.design, na.rm = T)
+cors
 sum(abs(cors$cors)[1,] > 0.2) - 1
 ```
 
@@ -1245,36 +1246,34 @@ sim.slope <- sim_slopes(glm.ixn.affirm.rm, pred = disc.trans, modx = affirm.tota
 sim.slope
 sim.slope.tidy <- tidy(sim.slope)
 sim.slope.tidy
-save(sim.slope.tidy, file = "sim.slope.tidy.Rda")
+save(sim.slope.tidy, file = paste(data_path, "sim.slope.tidy.Rda", sep = ""))
 plot(sim.slope)
 ```
 
 ```{r}
-sim.slopes.exp <- sim.slope.tidy %>% 
+sim.slope.exp <- sim.slope.tidy %>% 
   mutate(estimate = round(exp(estimate),2),
          conf.low = round(exp(conf.low),2),
          conf.high = round(exp(conf.high),2),
          p.value = round(p.value,4)) %>%
   select(modx.value, estimate, conf.low, conf.high, p.value) #%>%
   #round(2)
-sim.slopes.exp
+sim.slope.exp
 
-save(sim.slopes.exp, file = "sim.slopes.exp.Rda")
+save(sim.slope.exp, file = paste(data_path, "sim.slope.exp.Rda", sep = ""))
 ```
 
 
 ```{r}
-#plot(sim.slope)
-
-plot.sim.slope <- ggplot(sim.slope.tidy, aes(x = modx.value, y = exp(estimate))) +
+plot.sim.slope <- ggplot(sim.slope.exp, aes(x = modx.value, y = estimate)) +
   geom_point() +
-  geom_errorbar(data = sim.slope.tidy, aes(ymin = exp(conf.low), ymax = exp(conf.high))) +
+  geom_errorbar(data = sim.slope.exp, aes(ymin = conf.low, ymax = conf.high)) +
   scale_x_continuous(breaks = 0:11) +
   geom_abline(intercept = 1, slope = 0, linetype = "dashed") +
   labs(title = "Figure 3: Simple slopes for suicidal ideation by total gender affirmation \ninteraction, 2015 US Transgender Survey",
        x = "Total Affirmation Value",
        y = "Slope of Trans-Based Discrimination") +
-  theme(text = element_text(family = "Times New Roman", face = "bold"))
+  theme(text = element_text(family = "Times New Roman", face = "bold", size = 20))
 plot.sim.slope
 ```
 
@@ -1441,6 +1440,61 @@ sink()
 ```
 
 ```{r}
+X.family <- model.matrix(glm.ixn.family.rm)
+dof.family <- nrow(X.family) - ncol(X.family)
+vcov.family <- vcov(glm.ixn.family.rm)
+t.family <- qt(0.975, dof.family)
+coef.family <- coef(glm.ixn.family.rm)
+
+wald.family <- wald.test(b = coef.family, 
+          Sigma = vcov.family, 
+          Terms = (length(coef.family) - 1):length(coef.family))
+p.ixn.family <- wald.family$result$chi2["P"]
+
+
+sim.slope.family <- data.frame( family = factor(c("Unsupportive", 
+                                                  "Neutral", 
+                                                  "Supportive"),
+                                                  levels = c("Unsupportive",
+                                                             "Neutral", 
+                                                             "Supportive")),
+                                 estimate = unname(
+                                   c(glm.ixn.family.rm$coefficients[2],
+                                     glm.ixn.family.rm$coefficients[20] +
+                                       glm.ixn.family.rm$coefficients[2],
+                                     glm.ixn.family.rm$coefficients[21] +
+                                       glm.ixn.family.rm$coefficients[2])),
+                                 se = c(sqrt(vcov.family[2,2]),
+                                        sqrt(vcov.family[2,2] + 
+                                               vcov.family[20,20] + 
+                                               vcov.family[2,20]),
+                                        sqrt(vcov.family[2,2] + 
+                                               vcov.family[21,21] +
+                                               vcov.family[2,21])))
+sim.slope.family <- sim.slope.family %>% 
+  mutate(conf.low = exp(estimate - t.family*se),
+         conf.high = exp(estimate + t.family*se),
+         estimate = exp(estimate),
+         p.interaction = p.ixn.family,
+)
+
+save(sim.slope.family, file = paste(data_path, "sim.slope.family.Rda", sep = ""))
+```
+
+```{r}
+plot.sim.slope.family <- ggplot(sim.slope.family, aes(x = family, y = estimate)) +
+  geom_point() +
+  geom_errorbar(data = sim.slope.family, aes(ymin = conf.low, ymax = conf.high)) +
+  #scale_x_continuous(breaks = 0:2) +
+  geom_abline(intercept = 1, slope = 0, linetype = "dashed") +
+  labs(title = "Figure  : Simple slopes for suicidal ideation by family affirmation \ninteraction, 2015 US Transgender Survey",
+       x = "Family Supportiveness",
+       y = "Slope of Trans-Based Discrimination") +
+  theme(text = element_text(family = "Times New Roman", face = "bold"))
+plot.sim.slope.family
+```
+
+```{r}
 # Interaction model - affirm provider only - rm
 glm.ixn.provider.rm <- svyglm(suicidal ~ disc.trans*affirm.provider +
                                 disc.non.trans +
@@ -1463,6 +1517,53 @@ sink("ModelIxnProviderRm.txt")
 summ(glm.ixn.provider.rm, exp = T, confint = T)
 sink()
 ```
+
+```{r}
+X.provider <- model.matrix(glm.ixn.provider.rm)
+dof.provider <- nrow(X.provider) - ncol(X.provider)
+vcov.provider <- vcov(glm.ixn.provider.rm)
+t.provider <- qt(0.975, dof.provider)
+coef.provider <- coef(glm.ixn.provider.rm)
+
+wald.provider <- wald.test(b = coef.provider, 
+          Sigma = vcov.provider, 
+          Terms = length(coef.provider))
+p.ixn.provider <- wald.provider$result$chi2["P"]
+
+sim.slope.provider <- data.frame( provider = factor(c("No Knowledgeable Provider",
+                                                      "Has Knowledgeable Provider"),
+                                                  levels = c("No Knowledgeable Provider",
+                                                             "Has Knowledgeable Provider")),
+                                 estimate = unname(
+                                   c(glm.ixn.provider.rm$coefficients[2],
+                                     glm.ixn.provider.rm$coefficients[19] +
+                                       glm.ixn.provider.rm$coefficients[2])),
+                                 se = c(sqrt(vcov.provider[2,2]),
+                                        sqrt(vcov.provider[2,2] + 
+                                               vcov.provider[19,19] + 
+                                               vcov.provider[2,19])))
+sim.slope.provider <- sim.slope.provider %>% 
+  mutate(conf.low = exp(estimate - t.provider*se),
+         conf.high = exp(estimate + t.provider*se),
+         estimate = exp(estimate),
+         p.interaction = p.ixn.provider,
+)
+save(sim.slope.provider, file = paste(data_path, "sim.slope.provider.Rda", sep = ""))
+```
+
+```{r}
+plot.sim.slope.provider <- ggplot(sim.slope.provider, aes(x = provider, y = estimate)) +
+  geom_point() +
+  geom_errorbar(data = sim.slope.provider, aes(ymin = conf.low, ymax = conf.high)) +
+  #scale_x_continuous(breaks = 0:2) +
+  geom_abline(intercept = 1, slope = 0, linetype = "dashed") +
+  labs(title = "Figure  : Simple slopes for suicidal ideation by knowledgeable provider \ninteraction, 2015 US Transgender Survey",
+       x = "Provider Knowledge",
+       y = "Slope of Trans-Based Discrimination") +
+  theme(text = element_text(family = "Times New Roman", face = "bold"))
+plot.sim.slope.provider
+```
+
 
 ```{r}
 # Interaction model - affirm IDs name only - rm
@@ -1489,6 +1590,59 @@ sink()
 ```
 
 ```{r}
+X.id.name <- model.matrix(glm.ixn.id.name.rm)
+dof.id.name <- nrow(X.id.name) - ncol(X.id.name)
+vcov.id.name <- vcov(glm.ixn.id.name.rm)
+t.id.name <- qt(0.975, dof.id.name)
+coef.id.name <- coef(glm.ixn.id.name.rm)
+
+wald.id.name <- wald.test(b = coef.id.name, 
+          Sigma = vcov.id.name, 
+          Terms = (length(coef.id.name) - 1):length(coef.id.name))
+p.ixn.id.name <- wald.id.name$result$chi2["P"]
+
+
+sim.slope.id.name <- data.frame( id.name = factor(c("None", "Some", "All"),
+                                                  levels = c("None", "Some", "All")),
+                                 estimate = unname(
+                                   c(glm.ixn.id.name.rm$coefficients[2],
+                                     glm.ixn.id.name.rm$coefficients[20] +
+                                       glm.ixn.id.name.rm$coefficients[2],
+                                     glm.ixn.id.name.rm$coefficients[21] +
+                                       glm.ixn.id.name.rm$coefficients[2])),
+                                 se = c(sqrt(vcov.id.name[2,2]),
+                                        sqrt(vcov.id.name[2,2] + 
+                                               vcov.id.name[20,20] + 
+                                               vcov.id.name[2,20]),
+                                        sqrt(vcov.id.name[2,2] + 
+                                               vcov.id.name[21,21] +
+                                               vcov.id.name[2,21])))
+sim.slope.id.name <- sim.slope.id.name %>% 
+  mutate(conf.low = exp(estimate - t.id.name*se),
+         conf.high = exp(estimate + t.id.name*se),
+         estimate = exp(estimate),
+         p.interaction = p.ixn.id.name,
+)
+
+save(sim.slope.id.name, file = paste(data_path, "sim.slope.id.name.Rda", sep = ""))
+```
+
+```{r}
+plot.sim.slope.id.name <- ggplot(sim.slope.id.name, aes(x = id.name, y = estimate)) +
+  geom_point() +
+  geom_errorbar(data = sim.slope.id.name, aes(ymin = conf.low, ymax = conf.high)) +
+  #scale_x_continuous(breaks = 0:2) +
+  geom_abline(intercept = 1, slope = 0, linetype = "dashed") +
+  labs(title = "Figure  : Simple slopes for suicidal ideation by correct ID name \ninteraction, 2015 US Transgender Survey",
+       x = "IDs with Correct Name",
+       y = "Slope of Trans-Based Discrimination") +
+  theme(text = element_text(family = "Times New Roman", face = "bold"))
+plot.sim.slope.id.name
+```
+
+
+
+```{r}
 # Interaction model - affirm IDs gender only - rm
 glm.ixn.id.gender.rm <- svyglm(suicidal ~ disc.trans*affirm.id.gender +
                                  disc.non.trans +
@@ -1513,7 +1667,58 @@ sink()
 ```
 
 ```{r}
-# Interaction model - affirm IDs hormone only - rm
+X.id.gender <- model.matrix(glm.ixn.id.gender.rm)
+dof.id.gender <- nrow(X.id.gender) - ncol(X.id.gender)
+vcov.id.gender <- vcov(glm.ixn.id.gender.rm)
+t.id.gender <- qt(0.975, dof.id.gender)
+coef.id.gender <- coef(glm.ixn.id.gender.rm)
+
+wald.id.gender <- wald.test(b = coef.id.gender, 
+          Sigma = vcov.id.gender, 
+          Terms = (length(coef.id.gender) - 1):length(coef.id.gender))
+p.ixn.id.gender <- wald.id.gender$result$chi2["P"]
+
+
+sim.slope.id.gender <- data.frame( id.gender = factor(c("None", "Some", "All"),
+                                                  levels = c("None", "Some", "All")),
+                                 estimate = unname(
+                                   c(glm.ixn.id.gender.rm$coefficients[2],
+                                     glm.ixn.id.gender.rm$coefficients[20] +
+                                       glm.ixn.id.gender.rm$coefficients[2],
+                                     glm.ixn.id.gender.rm$coefficients[21] +
+                                       glm.ixn.id.gender.rm$coefficients[2])),
+                                 se = c(sqrt(vcov.id.gender[2,2]),
+                                        sqrt(vcov.id.gender[2,2] + 
+                                               vcov.id.gender[20,20] + 
+                                               vcov.id.gender[2,20]),
+                                        sqrt(vcov.id.gender[2,2] + 
+                                               vcov.id.gender[21,21] +
+                                               vcov.id.gender[2,21])))
+sim.slope.id.gender <- sim.slope.id.gender %>% 
+  mutate(conf.low = exp(estimate - t.id.gender*se),
+         conf.high = exp(estimate + t.id.gender*se),
+         estimate = exp(estimate),
+         p.interaction = p.ixn.id.gender,
+)
+
+save(sim.slope.id.gender, file = paste(data_path, "sim.slope.id.gender.Rda", sep = ""))
+```
+
+```{r}
+plot.sim.slope.id.gender <- ggplot(sim.slope.id.gender, aes(x = id.gender, y = estimate)) +
+  geom_point() +
+  geom_errorbar(data = sim.slope.id.gender, aes(ymin = conf.low, ymax = conf.high)) +
+  #scale_x_continuous(breaks = 0:2) +
+  geom_abline(intercept = 1, slope = 0, linetype = "dashed") +
+  labs(title = "Figure  : Simple slopes for suicidal ideation by correct ID gender \ninteraction, 2015 US Transgender Survey",
+       x = "IDs with Correct Gender",
+       y = "Slope of Trans-Based Discrimination") +
+  theme(text = element_text(family = "Times New Roman", face = "bold"))
+plot.sim.slope.id.gender
+```
+
+```{r}
+# Interaction model - affirm hormone/counseling only - rm
 glm.ixn.hormone.rm <- svyglm(suicidal ~ disc.trans*affirm.hormone +
                                disc.non.trans +
                               age +
@@ -1534,6 +1739,57 @@ summ(glm.ixn.hormone.rm, exp = T, confint = T)
 sink("ModelIxnHormoneRm.txt")
 summ(glm.ixn.hormone.rm, exp = T, confint = T)
 sink()
+```
+
+```{r}
+X.hormone <- model.matrix(glm.ixn.hormone.rm)
+dof.hormone <- nrow(X.hormone) - ncol(X.hormone)
+vcov.hormone <- vcov(glm.ixn.hormone.rm)
+t.hormone <- qt(0.975, dof.hormone)
+coef.hormone <- coef(glm.ixn.hormone.rm)
+
+wald.hormone <- wald.test(b = coef.hormone, 
+          Sigma = vcov.hormone, 
+          Terms = (length(coef.hormone) - 1):length(coef.hormone))
+p.ixn.hormone <- wald.hormone$result$chi2["P"]
+
+
+sim.slope.hormone <- data.frame( hormone = factor(c("None", "Some", "All"),
+                                                  levels = c("None", "Some", "All")),
+                                 estimate = unname(
+                                   c(glm.ixn.hormone.rm$coefficients[2],
+                                     glm.ixn.hormone.rm$coefficients[20] +
+                                       glm.ixn.hormone.rm$coefficients[2],
+                                     glm.ixn.hormone.rm$coefficients[21] +
+                                       glm.ixn.hormone.rm$coefficients[2])),
+                                 se = c(sqrt(vcov.hormone[2,2]),
+                                        sqrt(vcov.hormone[2,2] + 
+                                               vcov.hormone[20,20] + 
+                                               vcov.hormone[2,20]),
+                                        sqrt(vcov.hormone[2,2] + 
+                                               vcov.hormone[21,21] +
+                                               vcov.hormone[2,21])))
+sim.slope.hormone <- sim.slope.hormone %>% 
+  mutate(conf.low = exp(estimate - t.hormone*se),
+         conf.high = exp(estimate + t.hormone*se),
+         estimate = exp(estimate),
+         p.interaction = p.ixn.hormone,
+)
+
+save(sim.slope.hormone, file = paste(data_path, "sim.slope.hormone.Rda", sep = ""))
+```
+
+```{r}
+plot.sim.slope.hormone <- ggplot(sim.slope.hormone, aes(x = hormone, y = estimate)) +
+  geom_point() +
+  geom_errorbar(data = sim.slope.hormone, aes(ymin = conf.low, ymax = conf.high)) +
+  #scale_x_continuous(breaks = 0:2) +
+  geom_abline(intercept = 1, slope = 0, linetype = "dashed") +
+  labs(title = "Figure  : Simple slopes for suicidal ideation by hormone/counselling affirmation \ninteraction, 2015 US Transgender Survey",
+       x = "Desired Hormones/Counselling Acquired",
+       y = "Slope of Trans-Based Discrimination") +
+  theme(text = element_text(family = "Times New Roman", face = "bold"))
+plot.sim.slope.hormone
 ```
 
 ```{r}
@@ -1558,6 +1814,57 @@ summ(glm.ixn.med.rm, exp = T, confint = T)
 sink("ModelIxnMedRm.txt")
 summ(glm.ixn.med.rm, exp = T, confint = T)
 sink()
+```
+
+```{r}
+X.med <- model.matrix(glm.ixn.med.rm)
+dof.med <- nrow(X.med) - ncol(X.med)
+vcov.med <- vcov(glm.ixn.med.rm)
+t.med <- qt(0.975, dof.med)
+coef.med <- coef(glm.ixn.med.rm)
+
+wald.med <- wald.test(b = coef.med, 
+          Sigma = vcov.med, 
+          Terms = (length(coef.med) - 1):length(coef.med))
+p.ixn.med <- wald.med$result$chi2["P"]
+
+
+sim.slope.med <- data.frame( med = factor(c("None", "Some", "All"),
+                                                  levels = c("None", "Some", "All")),
+                                 estimate = unname(
+                                   c(glm.ixn.med.rm$coefficients[2],
+                                     glm.ixn.med.rm$coefficients[20] +
+                                       glm.ixn.med.rm$coefficients[2],
+                                     glm.ixn.med.rm$coefficients[21] +
+                                       glm.ixn.med.rm$coefficients[2])),
+                                 se = c(sqrt(vcov.med[2,2]),
+                                        sqrt(vcov.med[2,2] + 
+                                               vcov.med[20,20] + 
+                                               vcov.med[2,20]),
+                                        sqrt(vcov.med[2,2] + 
+                                               vcov.med[21,21] +
+                                               vcov.med[2,21])))
+sim.slope.med <- sim.slope.med %>% 
+  mutate(conf.low = exp(estimate - t.med*se),
+         conf.high = exp(estimate + t.med*se),
+         estimate = exp(estimate),
+         p.interaction = p.ixn.med,
+)
+
+save(sim.slope.med, file = paste(data_path, "sim.slope.med.Rda", sep = ""))
+```
+
+```{r}
+plot.sim.slope.med <- ggplot(sim.slope.med, aes(x = med, y = estimate)) +
+  geom_point() +
+  geom_errorbar(data = sim.slope.med, aes(ymin = conf.low, ymax = conf.high)) +
+  #scale_x_continuous(breaks = 0:2) +
+  geom_abline(intercept = 1, slope = 0, linetype = "dashed") +
+  labs(title = "Figure  : Simple slopes for suicidal ideation by medical/surgical affirmation \ninteraction, 2015 US Transgender Survey",
+       x = "Desired Medical/Surgical Procedures Acquired",
+       y = "Slope of Trans-Based Discrimination") +
+  theme(text = element_text(family = "Times New Roman", face = "bold"))
+plot.sim.slope.med
 ```
 
 # Create Tables 1-3
@@ -1684,10 +1991,13 @@ svyby(~disc.trans, ~religious, USTS.design, svymean, na.rm = T)
 svyby(~disc.trans, ~gender, USTS.design, svymean, na.rm = T)
 svyby(~disc.trans, ~poverty, USTS.design, svymean, na.rm = T)
 svyby(~disc.trans, ~disc.non.trans, USTS.design, svymean, na.rm = T)
-svyby(~disc.trans, ~affirm.intper.fam, USTS.design, svymean, na.rm = T)
-svyby(~disc.trans, ~affirm.intper.non.fam, USTS.design, svymean, na.rm = T)
-svyby(~disc.trans, ~affirm.struct.inst, USTS.design, svymean, na.rm = T)
-svyby(~disc.trans, ~affirm, USTS.design, svymean, na.rm = T)
+svyby(~disc.trans, ~affirm.provider, USTS.design, svymean, na.rm = T)
+svyby(~disc.trans, ~affirm.family, USTS.design, svymean, na.rm = T)
+svyby(~disc.trans, ~affirm.id.name, USTS.design, svymean, na.rm = T)
+svyby(~disc.trans, ~affirm.id.gender, USTS.design, svymean, na.rm = T)
+svyby(~disc.trans, ~affirm.hormone, USTS.design, svymean, na.rm = T)
+svyby(~disc.trans, ~affirm.med.surg, USTS.design, svymean, na.rm = T)
+svyby(~disc.trans, ~affirm.total, USTS.design, svymean, na.rm = T)
 ```
 ```{r}
 
