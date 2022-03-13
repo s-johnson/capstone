@@ -7,6 +7,7 @@ output: pdf_document
 # Load libraries
 
 ```{r}
+library(srvyr)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
@@ -16,7 +17,6 @@ library(dagitty)
 library(ggdag)
 library(tableone)
 library(survey)
-library(srvyr)
 library(svydiags)
 library(kableExtra)
 library(Hmisc)
@@ -29,6 +29,8 @@ library(lmtest)
 library(aod)
 library(interactions)
 library(ggstance)
+library(mice)
+library(mitools)
 
 data_path <- "/Volumes/usts_data/data/"
 ```
@@ -48,7 +50,9 @@ load(paste(data_path, "data.all.Rda", sep = ""))
 ```{r, eval=FALSE}
 rep_na_num <- c("Q1_13", "YRSSINCEFT", "AGEMOYR", "Q3_1", "Q3_2", "Q3_3", "Q4_10", "Q10_9", "Q12_10", "Q12_11", "Q12_16", "Q12_19", "AGESURGERY", "Q13_3", "Q16_10", "Q16_11", "Q16_12", "AGEFIRSTATTEMPT", "AGELASTATTEMPT", "Q17_7")
 
-rep_na_other <- names(data.all)[!names(data.all) %in% c("IDCODE",rep_na_num)]
+rep_na_lim <- c("FAMSUPPORT3")
+
+rep_na_other <- names(data.all)[!names(data.all) %in% c("IDCODE",rep_na_num, rep_na_lim)]
 ```
 
 ```{r, eval=FALSE}
@@ -58,6 +62,13 @@ rep_w_na_num <- function(x) {
 }
 
 data.all[rep_na_num] <- apply(data.all[rep_na_num], 2, rep_w_na_num)
+
+rep_w_na_lim <- function(x) {
+  x[x %in% c(99)] = NA
+  return(x)
+}
+
+data.all[rep_na_lim] <- apply(data.all[rep_na_lim], 2, rep_w_na_lim)
 
 rep_w_na_other <- function(x) {
   x[x %in% c(77,88,99)] = NA
@@ -81,173 +92,172 @@ load(paste(data_path, "data.all.raw.Rda", sep = ""))
 
 ```{r }
 data.all <- data.all %>% 
-  mutate(disc.age = select(.,
-                           Q17_4_1, 
-                           Q17_5_1 , 
-                           Q17_9_1 , 
-                           Q21_8_1_1 , 
-                           Q21_8_2_1 , 
-                           Q21_8_3_1 , 
-                           Q24_2_1) %>% 
-           rowSums(na.rm = TRUE),
-         disc.disability = select(.,
-                                  Q17_4_2 , 
-                                  Q17_5_2 , 
-                                  Q17_9_2 , 
-                                  Q21_8_1_2 , 
-                                  Q21_8_2_2 ,
-                                  Q21_8_3_2 , 
-                                  Q24_2_2) %>% 
-           rowSums(na.rm = TRUE),
-         disc.income.education = select(.,
-                                        Q17_4_3 ,
-                                        Q17_5_3 ,
-                                        Q17_9_3 ,
-                                        Q21_8_1_3 , 
-                                        Q21_8_2_3 , 
-                                        Q21_8_3_3 , 
-                                        Q24_2_3) %>% 
-           rowSums(na.rm = TRUE),
-         disc.race = select(.,
-                            Q17_4_6 ,
-                            Q17_5_6 ,
-                            Q17_9_6 , 
-                            Q21_8_1_6 , 
-                            Q21_8_2_6 , 
-                            Q21_8_3_6 , 
-                            Q24_2_6) %>% 
-           rowSums(na.rm = TRUE),
-         disc.religion = select(.,
-                                Q17_4_7 ,
-                                Q17_5_7 , 
-                                Q17_9_7 , 
-                                Q21_8_1_7 ,
-                                Q21_8_2_7 ,
-                                Q21_8_3_7 ,
-                                Q24_2_7) %>% 
-           rowSums(na.rm = TRUE),
-         disc.orientation = select(.,
-                                   Q17_4_8 ,
-                                   Q17_5_8 ,
-                                   Q17_9_8 , 
-                                   Q21_8_1_8 ,
-                                   Q21_8_2_8 , 
-                                   Q21_8_3_8 , 
-                                   Q24_2_8) %>% 
-           rowSums(na.rm = TRUE),
-         disc.other = select(.,
-                             Q17_4_9 , 
-                             Q17_5_9 , 
-                             Q17_9_9 , 
-                             Q21_8_1_9 , 
-                             Q21_8_2_9 , 
-                             Q21_8_3_9 , 
-                             Q24_2_9) %>% 
-           rowSums(na.rm = TRUE),
-         disc.trans = select(.,
-                             Q17_4TRANSGE ,
-                             Q17_5TRANSGE , 
-                             Q17_9TRANSGE ,
-                             Q21_8_1TRANSGE , 
-                             Q21_8_2TRANSGE , 
-                             Q21_8_3TRANSGE ,
-                             Q24_2TRANSGE) %>% 
-           rowSums(na.rm = TRUE),)  %>% 
-  mutate(disc.non.trans = select(.,
-                                 disc.age ,
-                                 disc.disability ,
-                                 disc.income.education , 
-                                 disc.race , 
-                                 disc.religion , 
-                                 disc.orientation , 
-                                 disc.other) %>% 
-           rowSums(na.rm = TRUE),)
+  dplyr::mutate(disc.age = dplyr::select(.,
+                                         Q17_4_1, 
+                                         Q17_5_1 , 
+                                         Q17_9_1 , 
+                                         Q21_8_1_1 , 
+                                         Q21_8_2_1 , 
+                                         Q21_8_3_1 , 
+                                         Q24_2_1) %>% 
+                  rowSums(na.rm = TRUE),
+                disc.disability = dplyr::select(.,
+                                                Q17_4_2 , 
+                                                Q17_5_2 , 
+                                                Q17_9_2 , 
+                                                Q21_8_1_2 , 
+                                                Q21_8_2_2 ,
+                                                Q21_8_3_2 , 
+                                                Q24_2_2) %>% 
+                  rowSums(na.rm = TRUE),
+                disc.income.education = dplyr::select(.,
+                                                      Q17_4_3 ,
+                                                      Q17_5_3 ,
+                                                      Q17_9_3 ,
+                                                      Q21_8_1_3 , 
+                                                      Q21_8_2_3 , 
+                                                      Q21_8_3_3 , 
+                                                      Q24_2_3) %>% 
+                  rowSums(na.rm = TRUE),
+                disc.race = dplyr::select(.,
+                                          Q17_4_6 ,
+                                          Q17_5_6 ,
+                                          Q17_9_6 , 
+                                          Q21_8_1_6 , 
+                                          Q21_8_2_6 , 
+                                          Q21_8_3_6 , 
+                                          Q24_2_6) %>% 
+                  rowSums(na.rm = TRUE),
+                disc.religion = dplyr::select(.,
+                                              Q17_4_7 ,
+                                              Q17_5_7 , 
+                                              Q17_9_7 , 
+                                              Q21_8_1_7 ,
+                                              Q21_8_2_7 ,
+                                              Q21_8_3_7 ,
+                                              Q24_2_7) %>% 
+                  rowSums(na.rm = TRUE),
+                disc.orientation = dplyr::select(.,
+                                                 Q17_4_8 ,
+                                                 Q17_5_8 ,
+                                                 Q17_9_8 , 
+                                                 Q21_8_1_8 ,
+                                                 Q21_8_2_8 , 
+                                                 Q21_8_3_8 , 
+                                                 Q24_2_8) %>% 
+                  rowSums(na.rm = TRUE),
+                disc.other = dplyr::select(.,
+                                           Q17_4_9 , 
+                                           Q17_5_9 , 
+                                           Q17_9_9 , 
+                                           Q21_8_1_9 , 
+                                           Q21_8_2_9 , 
+                                           Q21_8_3_9 , 
+                                           Q24_2_9) %>% 
+                  rowSums(na.rm = TRUE),
+                disc.trans = dplyr::select(.,
+                                           Q17_4TRANSGE ,
+                                           Q17_5TRANSGE , 
+                                           Q17_9TRANSGE ,
+                                           Q21_8_1TRANSGE , 
+                                           Q21_8_2TRANSGE , 
+                                           Q21_8_3TRANSGE ,
+                                           Q24_2TRANSGE) %>% 
+                  rowSums(na.rm = TRUE),)  %>% 
+  dplyr::mutate(disc.non.trans = dplyr::select(.,
+                                               disc.age ,
+                                               disc.disability ,
+                                               disc.income.education , 
+                                               disc.race , 
+                                               disc.religion , 
+                                               disc.orientation , 
+                                               disc.other) %>% 
+                  rowSums(na.rm = TRUE),)
 ```
 
 # Create affirmation variables
 
 ```{r}
 data.all <- data.all %>%
-  mutate(saab = factor(Q2_1 - 1,
-                       labels = c("AFAB",
-                                  "AMAB"))) %>%
-  mutate(affirm.provider = ((Q11_4 == 2) | (Q11_4 == 3) | 
-                              (Q11_7 == 2) | (Q11_7 == 3)),
-         affirm.family = (-1*FAMSUPPORT3 + 3),
-         affirm.id.name = (-1*Q10_13 + 3),
-         affirm.id.gender = (-1*Q10_15 + 3),
-         Q12_8eq9_1 = Q12_8_1 == Q12_9_1,
-         Q12_8eq9_2 = Q12_8_2 == Q12_9_2,
-         Q12_8eq9_3 = Q12_8_3 == Q12_9_3,
-         Q12_15_1new = (saab == "AFAB")&((Q12_15_1 == 1) | (Q12_15_1 == 4)),
-         Q12_15_2new = (saab == "AFAB")&((Q12_15_2 == 1) | (Q12_15_2 == 4)),
-         Q12_15_3new = (saab == "AFAB")&((Q12_15_3 == 1) | (Q12_15_3 == 4)),
-         Q12_15_4new = (saab == "AFAB")&((Q12_15_4 == 1) | (Q12_15_4 == 4)),
-         Q12_15_5new = (saab == "AFAB")&((Q12_15_5 == 1) | (Q12_15_5 == 4)),
-         Q12_18_1new = (saab == "AMAB")&((Q12_18_1 == 1) | (Q12_18_1 == 4)),
-         Q12_18_2new = (saab == "AMAB")&((Q12_18_2 == 1) | (Q12_18_2 == 4)),
-         Q12_18_3new = (saab == "AMAB")&((Q12_18_3 == 1) | (Q12_18_3 == 4)),
-         Q12_18_4new = (saab == "AMAB")&((Q12_18_4 == 1) | (Q12_18_4 == 4)),
-         Q12_18_5new = (saab == "AMAB")&((Q12_18_5 == 1) | (Q12_18_5 == 4)),
-         Q12_18_6new = (saab == "AMAB")&((Q12_18_6 == 1) | (Q12_18_6 == 4)),
-         Q12_18_7new = (saab == "AMAB")&((Q12_18_7 == 1) | (Q12_18_7 == 4)),
-         Q12_18_8new = (saab == "AMAB")&((Q12_18_8 == 1) | (Q12_18_8 == 4)),
-         Q12_18_9new = (saab == "AMAB")&((Q12_18_9 == 1) | (Q12_18_9 == 4)),
-         Q12_18_10new = (saab == "AMAB")&((Q12_18_10 == 1) | (Q12_18_10 == 4)),
+  dplyr::mutate(saab = factor(Q2_1 - 1,
+                              labels = c("AFAB",
+                                         "AMAB"))) %>%
+  dplyr::mutate(affirm.provider = ((Q11_4 == 2) | (Q11_4 == 3) | 
+                                     (Q11_7 == 2) | (Q11_7 == 3)),
+                affirm.family = (FAMSUPPORT3 == 1),
+                affirm.id.name = (-1*Q10_13 + 3),
+                affirm.id.gender = (-1*Q10_15 + 3),
+                Q12_8eq9_1 = Q12_8_1 == Q12_9_1,
+                Q12_8eq9_2 = Q12_8_2 == Q12_9_2,
+                Q12_8eq9_3 = Q12_8_3 == Q12_9_3,
+                Q12_15_1new = (saab == "AFAB")&((Q12_15_1 == 1) | (Q12_15_1 == 4)),
+                Q12_15_2new = (saab == "AFAB")&((Q12_15_2 == 1) | (Q12_15_2 == 4)),
+                Q12_15_3new = (saab == "AFAB")&((Q12_15_3 == 1) | (Q12_15_3 == 4)),
+                Q12_15_4new = (saab == "AFAB")&((Q12_15_4 == 1) | (Q12_15_4 == 4)),
+                Q12_15_5new = (saab == "AFAB")&((Q12_15_5 == 1) | (Q12_15_5 == 4)),
+                Q12_18_1new = (saab == "AMAB")&((Q12_18_1 == 1) | (Q12_18_1 == 4)),
+                Q12_18_2new = (saab == "AMAB")&((Q12_18_2 == 1) | (Q12_18_2 == 4)),
+                Q12_18_3new = (saab == "AMAB")&((Q12_18_3 == 1) | (Q12_18_3 == 4)),
+                Q12_18_4new = (saab == "AMAB")&((Q12_18_4 == 1) | (Q12_18_4 == 4)),
+                Q12_18_5new = (saab == "AMAB")&((Q12_18_5 == 1) | (Q12_18_5 == 4)),
+                Q12_18_6new = (saab == "AMAB")&((Q12_18_6 == 1) | (Q12_18_6 == 4)),
+                Q12_18_7new = (saab == "AMAB")&((Q12_18_7 == 1) | (Q12_18_7 == 4)),
+                Q12_18_8new = (saab == "AMAB")&((Q12_18_8 == 1) | (Q12_18_8 == 4)),
+                Q12_18_9new = (saab == "AMAB")&((Q12_18_9 == 1) | (Q12_18_9 == 4)),
+                Q12_18_10new = (saab == "AMAB")&((Q12_18_10 == 1) | (Q12_18_10 == 4)),
   ) %>%
-  mutate(Q12_8eq9_all = Q12_8eq9_1 & Q12_8eq9_2 & Q12_8eq9_3,
-         Q12_15or18_all = ((saab == "AFAB") &
-                             (Q12_15_1new & Q12_15_2new & Q12_15_3new & 
-                                Q12_15_4new & Q12_15_5new)) | 
-           ((saab == "AMAB") &
-              (Q12_18_1new & Q12_18_2new & Q12_18_3new & 
-                 Q12_18_4new & Q12_18_5new & Q12_18_6new &
-                 Q12_18_7new & Q12_18_8new & Q12_18_9new &
-                 Q12_18_10new)),
-  ) %>% mutate(Q12_8eq9_some = (Q12_8eq9_1 | Q12_8eq9_2 | Q12_8eq9_3) & (!Q12_8eq9_all),
-               Q12_15or18_some = (((saab == "AFAB") & ((Q12_15_1new | Q12_15_2new | Q12_15_3new |
-                                                          Q12_15_4new | Q12_15_5new))) | 
-                                    ((saab == "AMAB") &
-                                       ((Q12_18_1new | Q12_18_2new | Q12_18_3new | 
-                                           Q12_18_4new | Q12_18_5new | Q12_18_6new |
-                                           Q12_18_7new | Q12_18_8new | Q12_18_9new |
-                                           Q12_18_10new)))) & (!Q12_15or18_all),
-               
+  dplyr::mutate(Q12_8eq9_all = Q12_8eq9_1 & Q12_8eq9_2 & Q12_8eq9_3,
+                Q12_15or18_all = ((saab == "AFAB") &
+                                    (Q12_15_1new & Q12_15_2new & Q12_15_3new & 
+                                       Q12_15_4new & Q12_15_5new)) | 
+                  ((saab == "AMAB") &
+                     (Q12_18_1new & Q12_18_2new & Q12_18_3new & 
+                        Q12_18_4new & Q12_18_5new & Q12_18_6new &
+                        Q12_18_7new & Q12_18_8new & Q12_18_9new &
+                        Q12_18_10new)),
+  ) %>% dplyr::mutate(Q12_8eq9_some = (Q12_8eq9_1 | Q12_8eq9_2 | Q12_8eq9_3) & (!Q12_8eq9_all),
+                      Q12_15or18_some = (((saab == "AFAB") & ((Q12_15_1new | Q12_15_2new | Q12_15_3new |
+                                                                 Q12_15_4new | Q12_15_5new))) | 
+                                           ((saab == "AMAB") &
+                                              ((Q12_18_1new | Q12_18_2new | Q12_18_3new | 
+                                                  Q12_18_4new | Q12_18_5new | Q12_18_6new |
+                                                  Q12_18_7new | Q12_18_8new | Q12_18_9new |
+                                                  Q12_18_10new)))) & (!Q12_15or18_all),
+                      
   ) %>%
-  mutate(affirm.hormone = (Q12_8eq9_all*2 + Q12_8eq9_some*1),
-         affirm.med.surg = (Q12_15or18_all*2 + Q12_15or18_some*1),
+  dplyr::mutate(affirm.hormone = (Q12_8eq9_all*2 + Q12_8eq9_some*1),
+                affirm.med.surg = (Q12_15or18_all*2 + Q12_15or18_some*1),
   ) %>%
-  mutate(affirm.total = select(.,
-                               affirm.provider,
-                               affirm.family,
-                               affirm.id.name, 
-                               affirm.id.gender, 
-                               affirm.hormone, 
-                               affirm.med.surg) %>% 
-           rowSums(na.rm = TRUE),) %>%
-  mutate(affirm.provider = factor(affirm.provider,
-                                  labels = c("Not knowledgeable/Not sure/No provider",
-                                             "Knowledgeable")),
-         affirm.family = factor(affirm.family,
-                                labels = c("Unsupportive",
-                                           "Neutral",
-                                           "Supportive")),
-         affirm.id.name = factor(affirm.id.name,
-                                 labels = c("None",
-                                            "Some",
-                                            "All")),
-         affirm.id.gender = factor(affirm.id.gender,
-                                   labels = c("None",
-                                              "Some",
-                                              "All")),
-         affirm.hormone = factor(affirm.hormone,
-                                 labels = c("None",
-                                            "Some",
-                                            "All")),
-         affirm.med.surg = factor(affirm.med.surg,
-                                  labels = c("None",
-                                             "Some",
-                                             "All")),)
+  dplyr::mutate(affirm.total = dplyr::select(.,
+                                             affirm.provider,
+                                             affirm.family,
+                                             affirm.id.name, 
+                                             affirm.id.gender, 
+                                             affirm.hormone, 
+                                             affirm.med.surg) %>% 
+                  rowSums(na.rm = TRUE),) %>%
+  dplyr::mutate(affirm.provider = factor(affirm.provider,
+                                         labels = c("Not knowledgeable/Not sure/No provider",
+                                                    "Knowledgeable")),
+                affirm.family = factor(affirm.family,
+                                       labels = c("Not supportive",
+                                                  "Supportive")),
+                affirm.id.name = factor(affirm.id.name,
+                                        labels = c("None",
+                                                   "Some",
+                                                   "All")),
+                affirm.id.gender = factor(affirm.id.gender,
+                                          labels = c("None",
+                                                     "Some",
+                                                     "All")),
+                affirm.hormone = factor(affirm.hormone,
+                                        labels = c("None",
+                                                   "Some",
+                                                   "All")),
+                affirm.med.surg = factor(affirm.med.surg,
+                                         labels = c("None",
+                                                    "Some",
+                                                    "All")),)
 
 ```
 
@@ -255,80 +265,80 @@ data.all <- data.all %>%
 
 ```{r }
 data.all <- data.all %>%
-  mutate(suicidal = factor(Q16_1,
-                           labels = c("No Suicidal Ideation",
-                                      "Suicidal Ideation")),
-         military = factor(Q2_17 != 1,
-                           labels = c("Not Military",
-                                      "Military")),
-         intersex = factor(Q2_2_13,
-                           labels = c("Not Intersex",
-                                      "Intersex")),
-         insurance = factor(Q11_1,
-                            labels = c("No Health Insurance",
-                                       "Health Insurance")),
-         homelessness = factor(Q23_1,
-                               labels = c("Never Homeless",
-                                          "Ever Homeless")),
-         sexwork = factor(ANYSEXWORK,
-                          labels = c("Never Sex Work",
-                                     "Ever Sex Work")),
-         illegalwork = factor(Q6_11ANY,
-                              labels = c("Never Illegal (Non-Sex) Work",
-                                         "Ever Illegal (Non-Sex) Work")),
-         alcohol = factor(HEAVYALCOHOL,
-                          labels = c("No Heavy Alcohol Use",
-                                     "Heavy Alcohol Use")),
-         sexualassault = factor(Q18_1,
-                                labels = c("Never Sexually Assaulted",
-                                           "Ever Sexually Assaulted")),
-         orientation = factor(Q2_8CAT7, 
-                              labels = c("Asexual",
-                                         "Bisexual",
-                                         "Gay/Lesbian/SGL",
-                                         "Heterosexual/Straight",
-                                         "Pansexual",
-                                         "Queer",
-                                         "S.O. not listed")),
-         citizenship = factor(CITIZEN3,
-                              labels = c("U.S. citizen",
-                                         "Documented resident",
-                                         "Undocumented resident")),
-         passing = factor(VISUALCONFORMITY,
-                          labels = c("Not Passing as Cisgender",
-                                     "Somewhat Passing as Cisgender",
-                                     "Passing as Cisgender")),
-         outness = factor(OUTNESS,
-                          labels = c("None",
-                                     "Some",
-                                     "Most",
-                                     "All")),
-         race = factor(RACEACS2,
-                       labels = c("Alaska Native/American Indian alone",
-                                  "Asian/Native Hawaiian/Pacific Islander alone",
-                                  "Biracial/Multiracial/Not listed",
-                                  "Black/African American alone",
-                                  "Latino/a/Hispanic alone",
-                                  "White/Middle Eastern/North African alone")),
-         age = Q2_13,
-         education = factor(EDUCATION4,
-                            labels = c("Less than high school",
-                                       "High school grad (incl. GED)",
-                                       "Some college (no degree)/Associate's",
-                                       "Bachelor's degree or higher")),
-         disability = factor(ANYACSDIS, 
-                             labels = c("No Disability",
-                                        "Disability")),
-         religious = factor(RELIGIOUS, 
-                            labels = c("Not religious/spiritual",
-                                       "Religious/Spiritual")),
-         nonbinary = factor(GENDER2,
-                            labels = c("Trans",
-                                       "GQ/NB")),
-         poverty = factor(POVERTY,
-                          labels = c("Not Living At/Near Poverty",
-                                     "Living At/Near Poverty")),
-         overall = "Overall"
+  dplyr::mutate(suicidal = factor(Q16_1,
+                                  labels = c("No Suicidal Ideation",
+                                             "Suicidal Ideation")),
+                military = factor(Q2_17 != 1,
+                                  labels = c("Not Military",
+                                             "Military")),
+                intersex = factor(Q2_2_13,
+                                  labels = c("Not Intersex",
+                                             "Intersex")),
+                insurance = factor(Q11_1,
+                                   labels = c("No Health Insurance",
+                                              "Health Insurance")),
+                homelessness = factor(Q23_1,
+                                      labels = c("Never Homeless",
+                                                 "Ever Homeless")),
+                sexwork = factor(ANYSEXWORK,
+                                 labels = c("Never Sex Work",
+                                            "Ever Sex Work")),
+                illegalwork = factor(Q6_11ANY,
+                                     labels = c("Never Illegal (Non-Sex) Work",
+                                                "Ever Illegal (Non-Sex) Work")),
+                alcohol = factor(HEAVYALCOHOL,
+                                 labels = c("No Heavy Alcohol Use",
+                                            "Heavy Alcohol Use")),
+                sexualassault = factor(Q18_1,
+                                       labels = c("Never Sexually Assaulted",
+                                                  "Ever Sexually Assaulted")),
+                orientation = factor(Q2_8CAT7, 
+                                     labels = c("Asexual",
+                                                "Bisexual",
+                                                "Gay/Lesbian/SGL",
+                                                "Heterosexual/Straight",
+                                                "Pansexual",
+                                                "Queer",
+                                                "S.O. not listed")),
+                citizenship = factor(CITIZEN3,
+                                     labels = c("U.S. citizen",
+                                                "Documented resident",
+                                                "Undocumented resident")),
+                passing = factor(VISUALCONFORMITY,
+                                 labels = c("Not Passing as Cisgender",
+                                            "Somewhat Passing as Cisgender",
+                                            "Passing as Cisgender")),
+                outness = factor(OUTNESS,
+                                 labels = c("None",
+                                            "Some",
+                                            "Most",
+                                            "All")),
+                race = factor(RACEACS2,
+                              labels = c("Alaska Native/American Indian alone",
+                                         "Asian/Native Hawaiian/Pacific Islander alone",
+                                         "Biracial/Multiracial/Not listed",
+                                         "Black/African American alone",
+                                         "Latino/a/Hispanic alone",
+                                         "White/Middle Eastern/North African alone")),
+                age = Q2_13,
+                education = factor(EDUCATION4,
+                                   labels = c("Less than high school",
+                                              "High school grad (incl. GED)",
+                                              "Some college (no degree)/Associate's",
+                                              "Bachelor's degree or higher")),
+                disability = factor(ANYACSDIS, 
+                                    labels = c("No Disability",
+                                               "Disability")),
+                religious = factor(RELIGIOUS, 
+                                   labels = c("Not religious/spiritual",
+                                              "Religious/Spiritual")),
+                nonbinary = factor(GENDER2,
+                                   labels = c("Trans",
+                                              "GQ/NB")),
+                poverty = factor(POVERTY,
+                                 labels = c("Not Living At/Near Poverty",
+                                            "Living At/Near Poverty")),
+                overall = "Overall"
   )
 
 # Re-level factor variables where needed
@@ -366,9 +376,10 @@ label(data.all$affirm.med.surg) <- "Medical/Surgical Affirmation"
 # Create include variable
 
 ```{r}
-data.all <- data.all %>% mutate(include = 
-                                  (nonbinary == "GQ/NB") &
-                                  (!is.na(suicidal))) 
+data.all <- data.all %>% dplyr::mutate(include = 
+                                         (nonbinary == "GQ/NB") &
+                                         (!is.na(suicidal)),
+                                       include = replace_na(include, FALSE)) 
 
 save(data.all, file = paste(data_path, "data.all.Rda", sep = ""))
 ```
@@ -424,7 +435,7 @@ p2 <- ggplot(data = data.include, aes(x = affirm.total, y = ..density..)) +
   labs(x = "Gender Affirmation Score",
        y = element_blank(),
        title = "Distribution of Moderator (Affirmation)") +
-  scale_x_continuous(breaks = 0:11) +
+  scale_x_continuous(breaks = 0:10) +
   scale_y_continuous(labels = scales::percent)
 p2
 ```
@@ -456,8 +467,6 @@ round(prop.table(tab.disc.affirm)*100, 2)
 sink()
 ```
 
-# Create survey design
-
 ```{r}
 data.design <- data.all %>%
   dplyr::select(suicidal,
@@ -476,8 +485,8 @@ data.design <- data.all %>%
                 outness,
                 orientation,
                 age,
-                race,
                 education,
+                race,
                 poverty,
                 insurance,
                 homelessness,
@@ -495,28 +504,17 @@ data.design <- data.all %>%
 save(data.design, file = paste(data_path, "data.design.Rda", sep = ""))
 ```
 
-```{r}
-USTS.design.raw <- svydesign(ids = ~1,
-                             weights = ~SURVEYFULLWEIGHT,
-                             nest = FALSE,
-                             data = data.design)
-```
-
-```{r}
-summary(USTS.design.raw)
-sum(weights(USTS.design.raw, "sampling") == 0 )
-```
-
-# Subset the dataset using exclusion criteria
-
-```{r}
-USTS.design <- subset(USTS.design.raw, include == TRUE)
-summary(USTS.design)
-```
 
 # Compute VIF to assess collinearity
 
 ```{r}
+# quickly do survey design without imputation
+USTS.design.raw.vif <- svydesign(ids = ~1,
+                                 weights = ~SURVEYFULLWEIGHT,
+                                 nest = FALSE,
+                                 data = data.design)
+USTS.design.vif <- subset(USTS.design.raw.vif, include == TRUE)
+
 glm.vif <- svyglm(suicidal ~ disc.trans +
                     affirm.total + 
                     disc.non.trans + 
@@ -541,7 +539,7 @@ glm.vif <- svyglm(suicidal ~ disc.trans +
                     religious,
                   family = quasibinomial(),
                   data   = data.design,
-                  design = USTS.design)
+                  design = USTS.design.vif)
 V.vif <- Vmat(mobj = glm.vif)
 w.vif <- glm.vif$weights
 data.vif <- data.include %>%
@@ -603,35 +601,149 @@ vif[vif$svy.vif > 5 & vif$svy.vif <= 10,]
 
 Results: Outness, Orientation, Education to be removed
 
+# Re-Select columns for imputation and survey design
+
+```{r}
+data.design <- data.all %>%
+  dplyr::select(suicidal,
+                disc.trans,
+                affirm.provider,
+                affirm.family,
+                affirm.id.name,
+                affirm.id.gender,
+                affirm.hormone,
+                affirm.med.surg,
+                affirm.total,
+                disc.non.trans,
+                saab,
+                intersex,
+                passing,
+                age,
+                race,
+                poverty,
+                insurance,
+                homelessness,
+                sexwork,
+                illegalwork,
+                citizenship,
+                alcohol,
+                sexualassault,
+                disability,
+                military,
+                religious,
+                SURVEYFULLWEIGHT,
+                include)
+
+save(data.design, file = paste(data_path, "data.design.Rda", sep = ""))
+```
+
+# Impute missing covariates
+
+```{r}
+# take a look at missingness in each column
+p_missing <- unlist(lapply(data.design, function(x) sum(is.na(x))))/nrow(data.design)
+sort(p_missing, decreasing = TRUE)
+
+# define function to give us p-values later on
+# from: https://thestatsgeek.com/2020/11/05/p-values-after-multiple-imputation-using-mitools-in-r/
+MIcombineP <- function(MIcombineRes,digits=3) {
+  tStat <- MIcombineRes$coefficients/sqrt(diag(MIcombineRes$variance))
+  round(2*pt(-abs(tStat),df=MIcombineRes$df),digits)
+}
+```
+
+```{r}
+set.seed(42)
+# Run mice with zero imputations initially
+imp <- mice(data.design, maxit=0)
+
+# Set predictor matrix to 0 for variables we don't want to use for imputation
+pred.matrix <- imp$predictorMatrix
+ignore <- c("SURVEYFULLWEIGHT", 
+            "include", 
+            "affirm.total")
+ignore.1 <- c("affirm.provider",
+              "affirm.family",
+              "affirm.id.name",
+              "affirm.id.gender",
+              "affirm.hormone",
+              "affirm.med.surg")
+pred.matrix[, ignore] <- 0
+pred.matrix[c(ignore),] <- 0
+```
+
+```{r}
+# Actually impute using updated predictor matrix
+imp2 <- mice(data.design, maxit = 5, 
+             predictorMatrix = pred.matrix, 
+             print =  FALSE)
+
+# Create imputation list object
+imp.long <- mice::complete(imp2, action="long", include = TRUE)
+imp.list <- imputationList(split(imp.long, imp.long$.imp))
+```
+
+# Create survey design
+
+```{r}
+USTS.design.raw <- svydesign(ids = ~1,
+                             weights = ~SURVEYFULLWEIGHT,
+                             nest = FALSE,
+                             data = imp.list)
+```
+
+```{r}
+summary(USTS.design.raw$designs$`0`)
+#summary(USTS.design.raw$designs$`1`)
+#summary(USTS.design.raw$designs$`2`)
+#summary(USTS.design.raw$designs$`3`)
+#summary(USTS.design.raw$designs$`4`)
+#summary(USTS.design.raw$designs$`5`)
+
+sum(weights(USTS.design.raw, "sampling") == 0 )
+```
+
+# Subset the dataset using exclusion criteria
+
+```{r}
+USTS.design <- subset(USTS.design.raw, include == TRUE)
+summary(USTS.design$designs$`0`)
+#summary(USTS.design$designs$`1`)
+#summary(USTS.design$designs$`2`)
+#summary(USTS.design$designs$`3`)
+#summary(USTS.design$designs$`4`)
+#summary(USTS.design$designs$`5`)
+```
+
 # Compute basic statistics
 
 ```{r}
-cors <- svycor(~ disc.trans + 
-                 affirm.total + 
-                 as.numeric(affirm.provider)+ 
-                 as.numeric(affirm.family)+ 
-                 as.numeric(affirm.id.name)+ 
-                 as.numeric(affirm.id.gender)+
-                 as.numeric(affirm.hormone)+ 
-                 as.numeric(affirm.med.surg), design = USTS.design, na.rm = T)
+cors <- with(USTS.design, svycor(~ disc.trans + 
+                                   affirm.total + 
+                                   as.numeric(affirm.provider)+ 
+                                   as.numeric(affirm.family)+ 
+                                   as.numeric(affirm.id.name)+ 
+                                   as.numeric(affirm.id.gender)+
+                                   as.numeric(affirm.hormone)+ 
+                                   as.numeric(affirm.med.surg), na.rm = T))
 cors
-sum(abs(cors$cors)[1,] > 0.2) - 1
+#sum(abs(cors$cors)[1,] > 0.2) - 1
 ```
 
 ```{r}
-svymean(~suicidal, USTS.design, na.rm = T)
-confint(svymean(~suicidal, USTS.design, na.rm = T))
+MIcombine(with(USTS.design, svymean(~suicidal, na.rm = T)))
+confint(MIcombine(with(USTS.design, svymean(~suicidal, na.rm = T))))
 
-svyby(~suicidal, ~saab, USTS.design, svymean, na.rm = T)
-svyby(~suicidal, ~intersex, USTS.design, svymean, na.rm = T)
+MIcombine(with(USTS.design, svyby(~suicidal, ~saab, svymean, na.rm = T)))
+MIcombine(with(USTS.design, svyby(~suicidal, ~intersex, svymean, na.rm = T)))
 ```
 
 ```{r}
-svymean(~disc.trans, USTS.design, na.rm = T)
-confint(svymean(~disc.trans, USTS.design, na.rm = T))
+MIcombine(with(USTS.design, svymean(~disc.trans,  na.rm = T)))
+confint(MIcombine(with(USTS.design, svymean(~disc.trans,  na.rm = T))))
 
-svyby(~disc.trans, ~saab, USTS.design, svymean, na.rm = T)
-svyby(~disc.trans, ~intersex, USTS.design, svymean, na.rm = T)
+MIcombine(with(USTS.design, svyby(~disc.trans, ~saab, svymean, na.rm = T)))
+MIcombine(with(USTS.design, svyby(~disc.trans, ~intersex,  svymean, na.rm = T)))
 ```
 
 ```{r}
@@ -736,10 +848,9 @@ svyby(~disc.non.trans, ~saab, USTS.design, svymean, na.rm = T)
 
 ```{r}
 # Crude model
-glm.crude <- svyglm(suicidal ~ disc.trans,
-                    family = quasibinomial(),
-                    data   = data.design,
-                    design = USTS.design)
+glm.crude <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans,
+                                                family = quasibinomial(),
+                                                data   = data.design)))
 
 summary(glm.crude)
 
@@ -749,75 +860,98 @@ exp(coefficients(glm.crude))
 #exponentiated 95 CIs
 exp(confint(glm.crude))
 
-#better output
-summ(glm.crude, exp = T, confint = T)
+#p-values
+MIcombineP(glm.crude, digits=10)
 
-sink("ModelCrude.txt")
-summ(glm.crude, exp = T, confint = T)
-sink()
+#better output
+#summ(glm.crude, exp = T, confint = T)
+
+#sink("ModelCrude.txt")
+#summ(glm.crude, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
 # Intermediate model - no interaction
-glm.int <- svyglm(suicidal ~ disc.trans +
-                    affirm.total + 
-                    disc.non.trans + 
-                    age + 
-                    race + 
-                    saab + 
-                    intersex + 
-                    passing + 
-                    poverty + 
-                    insurance + 
-                    homelessness + 
-                    sexwork + 
-                    illegalwork +
-                    citizenship + 
-                    alcohol + 
-                    sexualassault + 
-                    disability + 
-                    military + 
-                    religious,
-                  family = quasibinomial(),
-                  data   = data.design,
-                  design = USTS.design)
+glm.int <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans +
+                                                affirm.total + 
+                                                disc.non.trans + 
+                                                age + 
+                                                race + 
+                                                saab + 
+                                                intersex + 
+                                                passing + 
+                                                poverty + 
+                                                insurance + 
+                                                homelessness + 
+                                                sexwork + 
+                                                illegalwork +
+                                                citizenship + 
+                                                alcohol + 
+                                                sexualassault + 
+                                                disability + 
+                                                military + 
+                                                religious,
+                                              family = quasibinomial(),
+                                              data   = data.design)))
 
-summ(glm.int, exp = T, confint = T)
+summary(glm.int)
 
-sink("ModelInt.txt")
-summ(glm.int, exp = T, confint = T)
-sink()
+#exponentiated ORs
+exp(coefficients(glm.int))
+
+#exponentiated 95 CIs
+exp(confint(glm.int))
+
+#p-values
+MIcombineP(glm.int, digits=10)
+
+#summ(glm.int, exp = T, confint = T)
+
+#sink("ModelInt.txt")
+#summ(glm.int, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
 # Interaction model - total affirmation
-glm.ixn <- svyglm(suicidal ~ disc.trans*affirm.total +
-                    disc.non.trans + 
-                    age + 
-                    race + 
-                    saab + 
-                    intersex + 
-                    passing + 
-                    poverty + 
-                    insurance + 
-                    homelessness + 
-                    sexwork + 
-                    illegalwork +
-                    citizenship + 
-                    alcohol + 
-                    sexualassault + 
-                    disability + 
-                    military + 
-                    religious,
-                  family = quasibinomial(),
-                  data   = data.design,
-                  design = USTS.design)
+glm.ixn <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans*affirm.total +
+                                                disc.non.trans + 
+                                                age + 
+                                                race + 
+                                                saab + 
+                                                intersex + 
+                                                passing + 
+                                                poverty + 
+                                                insurance + 
+                                                homelessness + 
+                                                sexwork + 
+                                                illegalwork +
+                                                citizenship + 
+                                                alcohol + 
+                                                sexualassault + 
+                                                disability + 
+                                                military + 
+                                                religious,
+                                              family = quasibinomial(),
+                                              data   = data.design)))
 
-summ(glm.ixn, exp = T, confint = T)
+summary(glm.ixn)
 
-sink("ModelIxn.txt")
-summ(glm.ixn, exp = T, confint = T)
-sink()
+#exponentiated ORs
+exp(coefficients(glm.ixn))
+
+#exponentiated 95 CIs
+exp(confint(glm.ixn))
+
+#p-values
+MIcombineP(glm.ixn, digits=10)
+
+#summ(glm.ixn, exp = T, confint = T)
+
+#sink("ModelIxn.txt")
+#summ(glm.ixn, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
@@ -828,10 +962,10 @@ sim.slope.tidy <- tidy(sim.slope)
 sim.slope.tidy
 
 sim.slope.tidy <- sim.slope.tidy %>% 
-  mutate(estimate = round(exp(estimate),2),
-         conf.low = round(exp(conf.low),2),
-         conf.high = round(exp(conf.high),2),
-         p.value = round(p.value,4)) %>%
+  dplyr::mutate(estimate = round(exp(estimate),2),
+                conf.low = round(exp(conf.low),2),
+                conf.high = round(exp(conf.high),2),
+                p.value = round(p.value,4)) %>%
   dplyr::select(modx.value, estimate, conf.low, conf.high, p.value)
 sim.slope.tidy
 save(sim.slope.tidy, file = paste(data_path, "sim.slope.tidy.Rda", sep = ""))
@@ -853,7 +987,7 @@ plot.sim.slope
 
 ```{r}
 # Interaction model - affirm provider only
-glm.ixn.provider <- svyglm(suicidal ~ disc.trans*affirm.provider +
+glm.ixn.provider <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans*affirm.provider +
                              disc.non.trans + 
                              age + 
                              race + 
@@ -872,15 +1006,27 @@ glm.ixn.provider <- svyglm(suicidal ~ disc.trans*affirm.provider +
                              military + 
                              religious,
                            family = quasibinomial(),
-                           data   = data.design,
-                           design = USTS.design)
+                           data   = data.design)))
 
-summ(glm.ixn.provider, exp = T, confint = T)
+summary(glm.ixn.provider)
+
+#exponentiated ORs
+exp(coefficients(glm.ixn.provider))
+
+#exponentiated 95 CIs
+exp(confint(glm.ixn.provider))
+
+#p-values
+MIcombineP(glm.ixn.provider, digits=10)
 
 
-sink("ModelIxnProvider.txt")
-summ(glm.ixn.provider, exp = T, confint = T)
-sink()
+
+#summ(glm.ixn.provider, exp = T, confint = T)
+
+
+#sink("ModelIxnProvider.txt")
+#summ(glm.ixn.provider, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
@@ -908,10 +1054,10 @@ sim.slope.provider <- data.frame( provider = factor(c("No Knowledgeable Provider
                                                 vcov.provider[19,19] + 
                                                 vcov.provider[2,19])))
 sim.slope.provider <- sim.slope.provider %>% 
-  mutate(conf.low = exp(estimate - t.provider*se),
-         conf.high = exp(estimate + t.provider*se),
-         estimate = exp(estimate),
-         p.interaction = p.ixn.provider,
+  dplyr::mutate(conf.low = exp(estimate - t.provider*se),
+                conf.high = exp(estimate + t.provider*se),
+                estimate = exp(estimate),
+                p.interaction = p.ixn.provider,
   )
 save(sim.slope.provider, file = paste(data_path, "sim.slope.provider.Rda", sep = ""))
 
@@ -929,7 +1075,7 @@ plot.sim.slope.provider
 
 ```{r}
 # Interaction model - affirm family only
-glm.ixn.family <- svyglm(suicidal ~ disc.trans*affirm.family +
+glm.ixn.family <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans*affirm.family +
                            disc.non.trans + 
                            age + 
                            race + 
@@ -948,16 +1094,26 @@ glm.ixn.family <- svyglm(suicidal ~ disc.trans*affirm.family +
                            military + 
                            religious,
                          family = quasibinomial(),
-                         data   = data.design,
-                         design = USTS.design)
+                         data   = data.design)))
 
-summ(glm.ixn.family, exp = T, confint = T)
+summary(glm.ixn.family)
+
+#exponentiated ORs
+exp(coefficients(glm.ixn.family))
+
+#exponentiated 95 CIs
+exp(confint(glm.ixn.family))
+
+#p-values
+MIcombineP(glm.ixn.family, digits=10)
 
 
 
-sink("ModelIxnFamily.txt")
-summ(glm.ixn.family, exp = T, confint = T)
-sink()
+#summ(glm.ixn.family, exp = T, confint = T)
+
+#sink("ModelIxnFamily.txt")
+#summ(glm.ixn.family, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
@@ -993,10 +1149,10 @@ sim.slope.family <- data.frame(family = factor(c("Unsupportive",
                                              vcov.family[21,21] +
                                              vcov.family[2,21])))
 sim.slope.family <- sim.slope.family %>% 
-  mutate(conf.low = exp(estimate - t.family*se),
-         conf.high = exp(estimate + t.family*se),
-         estimate = exp(estimate),
-         p.interaction = p.ixn.family,
+  dplyr::mutate(conf.low = exp(estimate - t.family*se),
+                conf.high = exp(estimate + t.family*se),
+                estimate = exp(estimate),
+                p.interaction = p.ixn.family,
   )
 
 save(sim.slope.family, file = paste(data_path, "sim.slope.family.Rda", sep = ""))
@@ -1015,35 +1171,45 @@ plot.sim.slope.family
 
 ```{r}
 # Interaction model - affirm IDs name only
-glm.ixn.id.name <- svyglm(suicidal ~ disc.trans*affirm.id.name +
-                               disc.non.trans + 
-                               age + 
-                               race + 
-                               saab + 
-                               intersex + 
-                               passing + 
-                               poverty + 
-                               insurance + 
-                               homelessness + 
-                               sexwork + 
-                               illegalwork +
-                               citizenship + 
-                               alcohol + 
-                               sexualassault + 
-                               disability + 
-                               military + 
-                               religious,
-                             family = quasibinomial(),
-                             data   = data.design,
-                             design = USTS.design)
+glm.ixn.id.name <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans*affirm.id.name +
+                            disc.non.trans + 
+                            age + 
+                            race + 
+                            saab + 
+                            intersex + 
+                            passing + 
+                            poverty + 
+                            insurance + 
+                            homelessness + 
+                            sexwork + 
+                            illegalwork +
+                            citizenship + 
+                            alcohol + 
+                            sexualassault + 
+                            disability + 
+                            military + 
+                            religious,
+                          family = quasibinomial(),
+                          data   = data.design)))
 
-summ(glm.ixn.id.name, exp = T, confint = T)
+summary(glm.ixn.id.name)
+
+#exponentiated ORs
+exp(coefficients(glm.ixn.id.name))
+
+#exponentiated 95 CIs
+exp(confint(glm.ixn.id.name))
+
+#p-values
+MIcombineP(glm.ixn.id.name, digits=10)
 
 
 
-sink("ModelIxnIDsName.txt")
-summ(glm.ixn.id.name, exp = T, confint = T)
-sink()
+#summ(glm.ixn.id.name, exp = T, confint = T)
+
+#sink("ModelIxnIDsName.txt")
+#summ(glm.ixn.id.name, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
@@ -1075,10 +1241,10 @@ sim.slope.id.name <- data.frame( id.name = factor(c("None", "Some", "All"),
                                                vcov.id.name[21,21] +
                                                vcov.id.name[2,21])))
 sim.slope.id.name <- sim.slope.id.name %>% 
-  mutate(conf.low = exp(estimate - t.id.name*se),
-         conf.high = exp(estimate + t.id.name*se),
-         estimate = exp(estimate),
-         p.interaction = p.ixn.id.name,
+  dplyr::mutate(conf.low = exp(estimate - t.id.name*se),
+                conf.high = exp(estimate + t.id.name*se),
+                estimate = exp(estimate),
+                p.interaction = p.ixn.id.name,
   )
 save(sim.slope.id.name, file = paste(data_path, "sim.slope.id.name.Rda", sep = ""))
 
@@ -1097,35 +1263,43 @@ plot.sim.slope.id.name
 
 ```{r}
 # Interaction model - affirm IDs gender only
-glm.ixn.id.gender <- svyglm(suicidal ~ disc.trans*affirm.id.gender +
-                                 disc.non.trans + 
-                                 age + 
-                                 race + 
-                                 saab + 
-                                 intersex + 
-                                 passing + 
-                                 poverty + 
-                                 insurance + 
-                                 homelessness + 
-                                 sexwork + 
-                                 illegalwork +
-                                 citizenship + 
-                                 alcohol + 
-                                 sexualassault + 
-                                 disability + 
-                                 military + 
-                                 religious,
-                               family = quasibinomial(),
-                               data   = data.design,
-                               design = USTS.design)
+glm.ixn.id.gender <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans*affirm.id.gender +
+                              disc.non.trans + 
+                              age + 
+                              race + 
+                              saab + 
+                              intersex + 
+                              passing + 
+                              poverty + 
+                              insurance + 
+                              homelessness + 
+                              sexwork + 
+                              illegalwork +
+                              citizenship + 
+                              alcohol + 
+                              sexualassault + 
+                              disability + 
+                              military + 
+                              religious,
+                            family = quasibinomial(),
+                            data   = data.design)))
 
-summ(glm.ixn.id.gender, exp = T, confint = T)
+summary(glm.ixn.id.gender)
 
+#exponentiated ORs
+exp(coefficients(glm.ixn.id.gender))
 
+#exponentiated 95 CIs
+exp(confint(glm.ixn.id.gender))
 
-sink("ModelIxnIDsGender.txt")
-summ(glm.ixn.id.gender, exp = T, confint = T)
-sink()
+#p-values
+MIcombineP(glm.ixn.id.gender, digits=10)
+
+#summ(glm.ixn.id.gender, exp = T, confint = T)
+
+#sink("ModelIxnIDsGender.txt")
+#summ(glm.ixn.id.gender, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
@@ -1157,10 +1331,10 @@ sim.slope.id.gender <- data.frame( id.gender = factor(c("None", "Some", "All"),
                                                  vcov.id.gender[21,21] +
                                                  vcov.id.gender[2,21])))
 sim.slope.id.gender <- sim.slope.id.gender %>% 
-  mutate(conf.low = exp(estimate - t.id.gender*se),
-         conf.high = exp(estimate + t.id.gender*se),
-         estimate = exp(estimate),
-         p.interaction = p.ixn.id.gender,
+  dplyr::mutate(conf.low = exp(estimate - t.id.gender*se),
+                conf.high = exp(estimate + t.id.gender*se),
+                estimate = exp(estimate),
+                p.interaction = p.ixn.id.gender,
   )
 
 save(sim.slope.id.gender, file = paste(data_path, "sim.slope.id.gender.Rda", sep = ""))
@@ -1180,35 +1354,43 @@ plot.sim.slope.id.gender
 
 ```{r}
 # Interaction model - affirm hormone/counseling only
-glm.ixn.hormone <- svyglm(suicidal ~ disc.trans*affirm.hormone +
-                               disc.non.trans + 
-                               age + 
-                               race + 
-                               saab + 
-                               intersex + 
-                               passing + 
-                               poverty + 
-                               insurance + 
-                               homelessness + 
-                               sexwork + 
-                               illegalwork +
-                               citizenship + 
-                               alcohol + 
-                               sexualassault + 
-                               disability + 
-                               military + 
-                               religious,
-                             family = quasibinomial(),
-                             data   = data.design,
-                             design = USTS.design)
+glm.ixn.hormone <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans*affirm.hormone +
+                            disc.non.trans + 
+                            age + 
+                            race + 
+                            saab + 
+                            intersex + 
+                            passing + 
+                            poverty + 
+                            insurance + 
+                            homelessness + 
+                            sexwork + 
+                            illegalwork +
+                            citizenship + 
+                            alcohol + 
+                            sexualassault + 
+                            disability + 
+                            military + 
+                            religious,
+                          family = quasibinomial(),
+                          data   = data.design)))
 
-summ(glm.ixn.hormone, exp = T, confint = T)
+summary(glm.ixn.hormone)
 
+#exponentiated ORs
+exp(coefficients(glm.ixn.hormone))
 
+#exponentiated 95 CIs
+exp(confint(glm.ixn.hormone))
 
-sink("ModelIxnHormone.txt")
-summ(glm.ixn.hormone, exp = T, confint = T)
-sink()
+#p-values
+MIcombineP(glm.ixn.hormone, digits=10)
+
+#summ(glm.ixn.hormone, exp = T, confint = T)
+
+#sink("ModelIxnHormone.txt")
+#summ(glm.ixn.hormone, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
@@ -1240,10 +1422,10 @@ sim.slope.hormone <- data.frame( hormone = factor(c("None", "Some", "All"),
                                                vcov.hormone[21,21] +
                                                vcov.hormone[2,21])))
 sim.slope.hormone <- sim.slope.hormone %>% 
-  mutate(conf.low = exp(estimate - t.hormone*se),
-         conf.high = exp(estimate + t.hormone*se),
-         estimate = exp(estimate),
-         p.interaction = p.ixn.hormone,
+  dplyr::mutate(conf.low = exp(estimate - t.hormone*se),
+                conf.high = exp(estimate + t.hormone*se),
+                estimate = exp(estimate),
+                p.interaction = p.ixn.hormone,
   )
 
 save(sim.slope.hormone, file = paste(data_path, "sim.slope.hormone.Rda", sep = ""))
@@ -1262,35 +1444,43 @@ plot.sim.slope.hormone
 
 ```{r}
 # Interaction model - affirm medical/surgical only
-glm.ixn.med <- svyglm(suicidal ~ disc.trans*affirm.med.surg +
-                           disc.non.trans + 
-                           age + 
-                           race + 
-                           saab + 
-                           intersex + 
-                           passing + 
-                           poverty + 
-                           insurance + 
-                           homelessness + 
-                           sexwork + 
-                           illegalwork +
-                           citizenship + 
-                           alcohol + 
-                           sexualassault + 
-                           disability + 
-                           military + 
-                           religious,
-                         family = quasibinomial(),
-                         data   = data.design,
-                         design = USTS.design)
+glm.ixn.med <- MIcombine(with(USTS.design, svyglm(suicidal ~ disc.trans*affirm.med.surg +
+                        disc.non.trans + 
+                        age + 
+                        race + 
+                        saab + 
+                        intersex + 
+                        passing + 
+                        poverty + 
+                        insurance + 
+                        homelessness + 
+                        sexwork + 
+                        illegalwork +
+                        citizenship + 
+                        alcohol + 
+                        sexualassault + 
+                        disability + 
+                        military + 
+                        religious,
+                      family = quasibinomial(),
+                      data   = data.design)))
 
-summ(glm.ixn.med, exp = T, confint = T)
+summary(glm.ixn.med)
 
+#exponentiated ORs
+exp(coefficients(glm.ixn.med))
 
+#exponentiated 95 CIs
+exp(confint(glm.ixn.med))
 
-sink("ModelIxnMed.txt")
-summ(glm.ixn.med, exp = T, confint = T)
-sink()
+#p-values
+MIcombineP(glm.ixn.med, digits=10)
+
+#summ(glm.ixn.med, exp = T, confint = T)
+
+#sink("ModelIxnMed.txt")
+#summ(glm.ixn.med, exp = T, confint = T)
+#sink()
 ```
 
 ```{r}
@@ -1322,10 +1512,10 @@ sim.slope.med <- data.frame( med = factor(c("None", "Some", "All"),
                                            vcov.med[21,21] +
                                            vcov.med[2,21])))
 sim.slope.med <- sim.slope.med %>% 
-  mutate(conf.low = exp(estimate - t.med*se),
-         conf.high = exp(estimate + t.med*se),
-         estimate = exp(estimate),
-         p.interaction = p.ixn.med,
+  dplyr::mutate(conf.low = exp(estimate - t.med*se),
+                conf.high = exp(estimate + t.med*se),
+                estimate = exp(estimate),
+                p.interaction = p.ixn.med,
   )
 
 save(sim.slope.med, file = paste(data_path, "sim.slope.med.Rda", sep = ""))
@@ -1350,8 +1540,60 @@ plot.sim.slope.med
 #                     weights = ~SURVEYFULLWEIGHT,
 #                     nest = FALSE,
 #                     data = data.all)
-vars <- c("suicidal", "disc.trans", "disc.non.trans", "affirm.total", "affirm.provider", "affirm.family", "affirm.id.name", "affirm.id.gender", "affirm.hormone", "affirm.med.surg", "age", "race",  "education", "poverty", "citizenship", "religious", "military", "disability", "saab", "passing", "outness", "orientation")
-fvars <- c("suicidal",  "affirm.family", "affirm.provider", "affirm.id.name", "affirm.id.gender", "affirm.hormone", "affirm.med.surg", "race", "education", "poverty", "citizenship", "religious", "military",  "disability", "saab", "passing", "outness", "orientation")
+vars <- c("suicidal", 
+          "disc.trans", 
+          "disc.non.trans", 
+          "affirm.total", 
+          "affirm.provider", 
+          "affirm.family", 
+          "affirm.id.name", 
+          "affirm.id.gender", 
+          "affirm.hormone", 
+          "affirm.med.surg", 
+          "age",
+          "race",
+          "education",
+          "saab",
+          "intersex",
+          "passing",
+          "outness",
+          "orientation",
+          "poverty",
+          "insurance",
+          "homelessness",
+          "sexwork",
+          "illegalwork",
+          "citizenship",
+          "alcohol",
+          "sexualassault",
+          "disability",
+          "military",
+          "religious")
+fvars <- c("suicidal",  
+           "affirm.family", 
+           "affirm.provider", 
+           "affirm.id.name", 
+           "affirm.id.gender", 
+           "affirm.hormone", 
+           "affirm.med.surg", 
+           "race",
+           "education",
+           "saab",
+           "intersex",
+           "passing",
+           "outness",
+           "orientation",
+           "poverty",
+           "insurance",
+           "homelessness",
+           "sexwork",
+           "illegalwork",
+           "citizenship",
+           "alcohol",
+           "sexualassault",
+           "disability",
+           "military",
+           "religious")
 ```
 
 
